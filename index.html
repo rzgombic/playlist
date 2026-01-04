@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+:root {
+  --bg: #ffffff;
+  --text: #000000;
+  --panel: #f5f5f5;
+  --border: #cccccc;
+  --highlight: #dbeafe;
+}
+
+body.dark {
+  --bg: #121212;
+  --text: #eaeaea;
+  --panel: #1e1e1e;
+  --border: #333333;
+  --highlight: #1f2937;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+/* ---------- TOP BAR ---------- */
+#topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding:
+    10px 14px
+    10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+}
+
+#topbar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#topbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#counter {
+  flex: 1;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+#add {
+  padding: 6px 10px;
+}
+
+/* ---------- PLAYLIST AREA ---------- */
+#content {
+  padding:
+    calc(160px + env(safe-area-inset-top))
+    0
+    calc(160px + env(safe-area-inset-bottom));
+}
+
+ul {
+  padding: 0;
+  margin: 0;
+}
+
+li {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+li.playing {
+  background: var(--highlight);
+  font-weight: 600;
+}
+
+.li-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.del-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  padding: 0;
+}
+
+/* ---------- CONTROLS (BOTTOM BAR) ---------- */
+#controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding:
+    10px 14px
+    calc(10px + env(safe-area-inset-bottom));
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.control-btn {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+  padding: 0;
+}
+
+#progress {
+  flex: 1;
+  height: 4px;
+}
+
+.time-label {
+  font-size: 12px;
+  min-width: 42px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+button, textarea {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div id="topbar-inner">
+    <button id="themeToggle">Dark</button>
+
+    <textarea id="t" placeholder="Enter text (2800 characters max)"></textarea>
+
+    <div id="topbar-row">
+      <div id="counter">Chars: 0 / 2800</div>
+      <button id="add">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCROLLABLE CONTENT -->
+<div id="content">
+  <ul id="list"></ul>
+</div>
+
+<!-- BOTTOM CONTROLS -->
+<div id="controls">
+  <button id="prev" class="control-btn">⏮</button>
+  <button id="back10" class="control-btn">↺10</button>
+  <button id="playpause" class="control-btn">▶︎</button>
+  <button id="fwd10" class="control-btn">↻10</button>
+  <button id="next" class="control-btn">⏭</button>
+
+  <span id="elapsed" class="time-label">0:00</span>
+  <progress id="progress" value="0" max="1"></progress>
+  <span id="remaining" class="time-label">-0:00</span>
+
+  <button id="speed">1.5×</button>
+</div>
+
+<script>
+const MAX_CHARS = 2800
+
+const t = document.getElementById("t")
+const list = document.getElementById("list")
+const counter = document.getElementById("counter")
+
+const playPauseBtn = document.getElementById("playpause")
+const prevBtn = document.getElementById("prev")
+const nextBtn = document.getElementById("next")
+const back10Btn = document.getElementById("back10")
+const fwd10Btn = document.getElementById("fwd10")
+const speedBtn = document.getElementById("speed")
+const themeToggle = document.getElementById("themeToggle")
+
+const progress = document.getElementById("progress")
+const elapsedEl = document.getElementById("elapsed")
+const remainingEl = document.getElementById("remaining")
+
+let speed = +(localStorage.getItem("speed") || 1.5)
+speedBtn.textContent = speed + "×"
+
+const CHARS_PER_SEC = 14
+const SKIP_SECONDS = 10
+
+let currentIndex = -1
+let currentText = ""
+let currentOffset = 0
+let progressTimer = null
+let progressElapsed = 0
+let progressDuration = 0
+
+/* ---------- THEME ---------- */
+const setTheme = dark => {
+  document.body.classList.toggle("dark", dark)
+  themeToggle.textContent = dark ? "Light" : "Dark"
+  localStorage.setItem("dark", dark)
+}
+setTheme(localStorage.getItem("dark") === "true")
+themeToggle.onclick = () =>
+  setTheme(!document.body.classList.contains("dark"))
+
+/* ---------- HELPERS ---------- */
+const fmt = s =>
+  Math.floor(s / 60) + ":" + String(Math.max(0, s % 60 | 0)).padStart(2, "0")
+
+const effectiveSpeed = () =>
+  1 + (speed - 1) * 0.75
+
+const secondsForText = txt =>
+  Math.ceil(txt.length / (CHARS_PER_SEC * effectiveSpeed()))
+
+const highlightCurrent = () => {
+  [...list.children].forEach((li, i) =>
+    li.classList.toggle("playing", i === currentIndex)
+  )
+}
+
+const savePlaylist = () =>
+  localStorage.setItem(
+    "playlist",
+    JSON.stringify([...list.children].map(li => li.dataset.text))
+  )
+
+/* ---------- PROGRESS ---------- */
+const startProgress = duration => {
+  clearInterval(progressTimer)
+  progressElapsed = 0
+  progressDuration = duration
+  progress.max = duration
+  progress.value = 0
+  elapsedEl.textContent = "0:00"
+  remainingEl.textContent = "-" + fmt(duration)
+
+  progressTimer = setInterval(() => {
+    if (!speechSynthesis.paused) {
+      progressElapsed += 0.1
+      progress.value = progressElapsed
+      elapsedEl.textContent = fmt(progressElapsed)
+      remainingEl.textContent =
+        "-" + fmt(progressDuration - progressElapsed)
+    }
+  }, 100)
+}
+
+const stopProgress = () => {
+  clearInterval(progressTimer)
+  progress.value = 0
+  elapsedEl.textContent = "0:00"
+  remainingEl.textContent = "-0:00"
+}
+
+/* ---------- SPEAK ---------- */
+const speakFromOffset = () => {
+  speechSynthesis.cancel()
+  stopProgress()
+  if (!currentText) return
+
+  const remainingText = currentText.slice(currentOffset)
+  const duration = secondsForText(remainingText)
+
+  const u = new SpeechSynthesisUtterance(remainingText)
+  u.rate = speed
+  u.onend = () => playNext()
+  startProgress(duration)
+  speechSynthesis.speak(u)
+
+  playPauseBtn.textContent = "❚❚"
+  highlightCurrent()
+}
+
+/* ---------- PLAY CONTROLS ---------- */
+const playIndex = i => {
+  const items = [...list.children]
+  if (!items[i]) return
+  currentIndex = i
+  currentText = items[i].dataset.text
+  currentOffset = 0
+  speakFromOffset()
+}
+
+const playNext = () => playIndex(currentIndex + 1)
+const playPrev = () => playIndex(Math.max(0, currentIndex - 1))
+
+/* ---------- SKIP ±10s ---------- */
+const skipChars = () =>
+  Math.floor(CHARS_PER_SEC * effectiveSpeed() * SKIP_SECONDS)
+
+back10Btn.onclick = () => {
+  currentOffset = Math.max(0, currentOffset - skipChars())
+  speakFromOffset()
+}
+
+fwd10Btn.onclick = () => {
+  currentOffset = Math.min(
+    currentText.length,
+    currentOffset + skipChars()
+  )
+  speakFromOffset()
+}
+
+/* ---------- BUTTON WIRING ---------- */
+playPauseBtn.onclick = () => {
+  if (speechSynthesis.speaking && !speechSynthesis.paused) {
+    speechSynthesis.pause()
+    playPauseBtn.textContent = "▶︎"
+  } else if (speechSynthesis.paused) {
+    speechSynthesis.resume()
+    playPauseBtn.textContent = "❚❚"
+  } else {
+    playIndex(currentIndex >= 0 ? currentIndex : 0)
+  }
+}
+
+nextBtn.onclick = playNext
+prevBtn.onclick = playPrev
+
+speedBtn.onclick = () => {
+  speed = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1
+  speedBtn.textContent = speed + "×"
+  localStorage.setItem("speed", speed)
+}
+
+/* ---------- CHARACTER LIMIT ---------- */
+t.oninput = () => {
+  t.value = t.value.slice(0, MAX_CHARS)
+  counter.textContent = `Chars: ${t.value.length} / ${MAX_CHARS}`
+}
+
+/* ---------- ADD / DELETE ITEMS ---------- */
+const addItem = txt => {
+  const li = document.createElement("li")
+  li.dataset.text = txt
+
+  const span = document.createElement("span")
+  span.className = "li-text"
+  span.textContent = txt
+
+  const del = document.createElement("button")
+  del.className = "del-btn"
+  del.textContent = "✕"
+  del.onclick = () => {
+    const idx = [...list.children].indexOf(li)
+
+    if (idx === currentIndex) {
+      speechSynthesis.cancel()
+      stopProgress()
+      currentIndex = -1
+      currentText = ""
+    } else if (idx < currentIndex) {
+      currentIndex--
+    }
+
+    li.remove()
+    highlightCurrent()
+    savePlaylist()
+  }
+
+  li.append(span, del)
+  list.appendChild(li)
+}
+
+document.getElementById("add").onclick = () => {
+  if (!t.value.trim()) return
+  addItem(t.value.trim())
+  savePlaylist()
+  t.value = ""
+  counter.textContent = `Chars: 0 / ${MAX_CHARS}`
+}
+
+/* ---------- RESTORE ---------- */
+JSON.parse(localStorage.getItem("playlist") || "[]").forEach(addItem)
+</script>
+
+</body>
+</html>
