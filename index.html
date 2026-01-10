@@ -301,7 +301,7 @@ body {
 
 <!-- BOTTOM CONTROLS -->
 <div id="controls">
-  <button id="dark-mode-toggle" title="Toggle Dark Mode">🌙</button>
+  <button id="dark-mode-toggle" title="Toggle Dark Mode">🌆</button>
   <button id="prev-btn" class="control-btn" title="Previous">⏮</button>
   <button id="play-pause-btn" title="Play/Pause">▶</button>
   <button id="next-btn" class="control-btn" title="Next">⏭</button>
@@ -356,7 +356,7 @@ function loadDarkMode() {
 function toggleDarkMode() {
   document.body.classList.toggle('dark-mode');
   const isDark = document.body.classList.contains('dark-mode');
-  darkModeToggle.textContent = isDark ? '☀️' : '🌙';
+  darkModeToggle.textContent = isDark ? '🌇' : '🌆';
   saveDarkMode(isDark);
 }
 
@@ -365,7 +365,7 @@ darkModeToggle.addEventListener('click', toggleDarkMode);
 // Initialize dark mode from storage
 if (loadDarkMode()) {
   document.body.classList.add('dark-mode');
-  darkModeToggle.textContent = '☀️';
+  darkModeToggle.textContent = '🌇';
 }
 
 // ---------- ADD ITEM ----------
@@ -664,6 +664,81 @@ function stopProgressTracking(resetBar = true) {
   }
 }
 
+// ---------- MEDIA SESSION API ----------
+function updateMediaSession() {
+  if ('mediaSession' in navigator && currentIndex >= 0 && currentIndex < items.length) {
+    const text = items[currentIndex];
+    // Create a preview (first 100 chars)
+    const preview = text.length > 100 ? text.substring(0, 100) + '...' : text;
+    
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: preview,
+      artist: 'Article Audio Playlist',
+      album: `Item ${currentIndex + 1} of ${items.length}`,
+      artwork: [
+        { src: 'https://via.placeholder.com/96x96?text=🔊', sizes: '96x96', type: 'image/png' },
+        { src: 'https://via.placeholder.com/128x128?text=🔊', sizes: '128x128', type: 'image/png' },
+        { src: 'https://via.placeholder.com/192x192?text=🔊', sizes: '192x192', type: 'image/png' },
+        { src: 'https://via.placeholder.com/256x256?text=🔊', sizes: '256x256', type: 'image/png' },
+        { src: 'https://via.placeholder.com/384x384?text=🔊', sizes: '384x384', type: 'image/png' },
+        { src: 'https://via.placeholder.com/512x512?text=🔊', sizes: '512x512', type: 'image/png' }
+      ]
+    });
+    
+    // Set playback state
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }
+}
+
+function setupMediaSession() {
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.setActionHandler('play', () => {
+      if (speechSynthesis.paused) {
+        speechSynthesis.resume();
+        startProgressTracking();
+        playPauseBtn.textContent = '❚❚';
+        isPlaying = true;
+        updateMediaSession();
+      } else if (currentIndex >= 0) {
+        playItem(currentIndex);
+      } else if (items.length > 0) {
+        playItem(0);
+      }
+    });
+    
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (speechSynthesis.speaking && !speechSynthesis.paused) {
+        speechSynthesis.pause();
+        const currentElapsed = (Date.now() - startTime) / 1000;
+        elapsedBeforePause += currentElapsed;
+        stopProgressTracking(false);
+        playPauseBtn.textContent = '▶';
+        isPlaying = false;
+        updateMediaSession();
+      }
+    });
+    
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      if (currentIndex > 0) {
+        playItem(currentIndex - 1);
+      }
+    });
+    
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      if (currentIndex < items.length - 1) {
+        playItem(currentIndex + 1);
+      }
+    });
+    
+    navigator.mediaSession.setActionHandler('stop', () => {
+      stop();
+    });
+  }
+}
+
+// Initialize Media Session handlers
+setupMediaSession();
+
 // ---------- SPEECH SYNTHESIS ----------
 function speak(text) {
   const utterance = new SpeechSynthesisUtterance(text);
@@ -676,6 +751,7 @@ function speak(text) {
     isPlaying = true;
     playPauseBtn.textContent = '❚❚';
     startProgressTracking();
+    updateMediaSession();
   };
   
   utterance.onend = () => {
@@ -698,6 +774,9 @@ function stop() {
   playPauseBtn.textContent = '▶';
   currentIndex = -1;
   renderPlaylist();
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.playbackState = 'none';
+  }
 }
 
 // ---------- CONTROL BUTTONS ----------
@@ -709,10 +788,14 @@ playPauseBtn.addEventListener('click', () => {
     elapsedBeforePause += currentElapsed;
     stopProgressTracking(false); // Don't reset the progress bar
     playPauseBtn.textContent = '▶';
+    isPlaying = false;
+    updateMediaSession();
   } else if (speechSynthesis.paused) {
     speechSynthesis.resume();
     startProgressTracking();
     playPauseBtn.textContent = '❚❚';
+    isPlaying = true;
+    updateMediaSession();
   } else {
     // Start playing from current or first item
     const startIndex = currentIndex >= 0 ? currentIndex : 0;
