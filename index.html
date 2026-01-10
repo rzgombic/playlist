@@ -26,7 +26,7 @@ body {
 #text-input {
   width: 100%;
   padding: 12px;
-  font-size: 14px;
+  font-size: 16px;
   border: 1px solid #ccc;
   border-radius: 4px;
   resize: vertical;
@@ -37,7 +37,7 @@ body {
 #add-btn {
   margin-top: 10px;
   padding: 10px 20px;
-  font-size: 14px;
+  font-size: 16px;
   background: #007bff;
   color: white;
   border: none;
@@ -92,6 +92,9 @@ body {
   cursor: grab;
   user-select: none;
   line-height: 1;
+  padding: 10px;
+  margin: -10px;
+  touch-action: none;
 }
 
 .drag-handle:active {
@@ -394,6 +397,93 @@ function handleDragEnd(e) {
   e.target.classList.remove('dragging');
   draggedIndex = null;
 }
+
+// ---------- TOUCH DRAG SUPPORT (for mobile Safari) ----------
+let touchStartY = 0;
+let touchStartX = 0;
+let touchedElement = null;
+let placeholder = null;
+
+playlist.addEventListener('touchstart', (e) => {
+  const handle = e.target.closest('.drag-handle');
+  if (!handle) return;
+  
+  const item = handle.closest('.playlist-item');
+  if (!item) return;
+  
+  touchedElement = item;
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+  
+  // Create placeholder
+  placeholder = item.cloneNode(true);
+  placeholder.style.opacity = '0.4';
+  placeholder.style.pointerEvents = 'none';
+  
+  item.style.opacity = '0.4';
+}, { passive: true });
+
+playlist.addEventListener('touchmove', (e) => {
+  if (!touchedElement) return;
+  
+  e.preventDefault(); // Prevent scrolling while dragging
+  
+  const touch = e.touches[0];
+  const currentY = touch.clientY;
+  
+  // Find the item we're hovering over
+  const items = Array.from(playlist.querySelectorAll('.playlist-item'));
+  const targetItem = items.find(item => {
+    if (item === touchedElement) return false;
+    const rect = item.getBoundingClientRect();
+    return currentY >= rect.top && currentY <= rect.bottom;
+  });
+  
+  if (targetItem) {
+    const rect = targetItem.getBoundingClientRect();
+    const middle = rect.top + rect.height / 2;
+    
+    if (currentY < middle) {
+      playlist.insertBefore(touchedElement, targetItem);
+    } else {
+      playlist.insertBefore(touchedElement, targetItem.nextSibling);
+    }
+  }
+}, { passive: false });
+
+playlist.addEventListener('touchend', (e) => {
+  if (!touchedElement) return;
+  
+  touchedElement.style.opacity = '1';
+  
+  // Rebuild items array based on new DOM order
+  const newItems = [];
+  const itemElements = playlist.querySelectorAll('.playlist-item');
+  itemElements.forEach(el => {
+    const index = parseInt(el.dataset.index);
+    newItems.push(items[index]);
+  });
+  
+  // Find new position of currently playing item
+  if (currentIndex >= 0) {
+    const playingText = items[currentIndex];
+    currentIndex = newItems.indexOf(playingText);
+  }
+  
+  items = newItems;
+  renderPlaylist();
+  
+  touchedElement = null;
+  placeholder = null;
+}, { passive: true });
+
+playlist.addEventListener('touchcancel', (e) => {
+  if (touchedElement) {
+    touchedElement.style.opacity = '1';
+    touchedElement = null;
+    placeholder = null;
+  }
+}, { passive: true });
 
 // ---------- DELETE ITEM ----------
 function deleteItem(index) {
