@@ -9,29 +9,60 @@
   box-sizing: border-box;
 }
 
+:root {
+  --bg-primary: #f5f5f5;
+  --bg-secondary: white;
+  --text-primary: #333;
+  --text-secondary: #666;
+  --text-tertiary: #999;
+  --border-color: #ddd;
+  --border-color-light: #ccc;
+  --shadow: rgba(0,0,0,0.1);
+  --item-hover: #f0f0f0;
+  --delete-hover-bg: #fee;
+  --delete-hover-border: #f88;
+}
+
+body.dark-mode {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2d2d2d;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0a0;
+  --text-tertiary: #707070;
+  --border-color: #404040;
+  --border-color-light: #505050;
+  --shadow: rgba(0,0,0,0.3);
+  --item-hover: #3a3a3a;
+  --delete-hover-bg: #4a2020;
+  --delete-hover-border: #8a4040;
+}
+
 body {
-  background: #f5f5f5;
-  color: #333;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 /* ---------- INPUT AREA ---------- */
 #input-area {
   padding: 20px;
-  background: white;
-  border-bottom: 2px solid #ddd;
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border-color);
 }
 
 #text-input {
   width: 100%;
   padding: 12px;
   font-size: 16px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-color-light);
   border-radius: 4px;
   resize: vertical;
   min-height: 120px;
   font-family: inherit;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 #add-btn {
@@ -66,14 +97,14 @@ body {
 }
 
 .playlist-item {
-  background: white;
+  background: var(--bg-secondary);
   margin-bottom: 10px;
   padding: 15px;
   border-radius: 4px;
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color);
 }
 
 .playlist-item.playing {
@@ -88,7 +119,7 @@ body {
 
 .drag-handle {
   font-size: 20px;
-  color: #999;
+  color: var(--text-tertiary);
   cursor: grab;
   user-select: none;
   line-height: 1;
@@ -121,7 +152,7 @@ body {
 
 .item-duration {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .item-progress {
@@ -147,11 +178,12 @@ body {
 .play-item-btn, .delete-btn {
   padding: 6px 10px;
   font-size: 12px;
-  border: 1px solid #ccc;
-  background: white;
+  border: 1px solid var(--border-color-light);
+  background: var(--bg-secondary);
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 
 .play-item-btn:hover {
@@ -160,8 +192,8 @@ body {
 }
 
 .delete-btn:hover {
-  background: #fee;
-  border-color: #f88;
+  background: var(--delete-hover-bg);
+  border-color: var(--delete-hover-border);
   color: #c00;
 }
 
@@ -171,22 +203,24 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  background: white;
-  border-top: 2px solid #ddd;
+  background: var(--bg-secondary);
+  border-top: 2px solid var(--border-color);
   padding: 15px;
   display: flex;
   justify-content: center;
   align-items: center;
   gap: 12px;
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 -2px 8px var(--shadow);
 }
 
-.control-btn {
-  width: 48px;
-  height: 48px;
-  font-size: 18px;
-  background: white;
-  border: 1px solid #ccc;
+#dark-mode-toggle {
+  position: absolute;
+  left: 15px;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color-light);
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -195,8 +229,23 @@ body {
   user-select: none;
 }
 
-.control-btn:hover {
-  background: #f0f0f0;
+.control-btn {
+  width: 48px;
+  height: 48px;
+  font-size: 18px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color-light);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  color: var(--text-primary);
+}
+
+.control-btn:hover, #dark-mode-toggle:hover {
+  background: var(--item-hover);
 }
 
 .control-btn:active {
@@ -252,6 +301,7 @@ body {
 
 <!-- BOTTOM CONTROLS -->
 <div id="controls">
+  <button id="dark-mode-toggle" title="Toggle Dark Mode">🌙</button>
   <button id="prev-btn" class="control-btn" title="Previous">⏮</button>
   <button id="play-pause-btn" title="Play/Pause">▶</button>
   <button id="next-btn" class="control-btn" title="Next">⏭</button>
@@ -266,6 +316,7 @@ const playPauseBtn = document.getElementById('play-pause-btn');
 const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const playAllBtn = document.getElementById('play-all-btn');
+const darkModeToggle = document.getElementById('dark-mode-toggle');
 
 let currentIndex = -1;
 let items = [];
@@ -276,12 +327,54 @@ let estimatedDuration = 0;
 let pausedAt = 0;
 let elapsedBeforePause = 0;
 
+// ---------- LOCALSTORAGE ----------
+function saveToStorage() {
+  localStorage.setItem('playlist-items', JSON.stringify(items));
+}
+
+function loadFromStorage() {
+  const saved = localStorage.getItem('playlist-items');
+  if (saved) {
+    try {
+      items = JSON.parse(saved);
+    } catch (e) {
+      items = [];
+    }
+  }
+}
+
+function saveDarkMode(isDark) {
+  localStorage.setItem('dark-mode', isDark ? 'true' : 'false');
+}
+
+function loadDarkMode() {
+  const saved = localStorage.getItem('dark-mode');
+  return saved === 'true';
+}
+
+// ---------- DARK MODE ----------
+function toggleDarkMode() {
+  document.body.classList.toggle('dark-mode');
+  const isDark = document.body.classList.contains('dark-mode');
+  darkModeToggle.textContent = isDark ? '☀️' : '🌙';
+  saveDarkMode(isDark);
+}
+
+darkModeToggle.addEventListener('click', toggleDarkMode);
+
+// Initialize dark mode from storage
+if (loadDarkMode()) {
+  document.body.classList.add('dark-mode');
+  darkModeToggle.textContent = '☀️';
+}
+
 // ---------- ADD ITEM ----------
 addBtn.addEventListener('click', () => {
   const text = textInput.value.trim();
   if (!text) return;
   
   items.push(text);
+  saveToStorage();
   renderPlaylist();
   textInput.value = '';
   textInput.focus();
@@ -389,6 +482,7 @@ function handleDrop(e) {
       currentIndex++;
     }
     
+    saveToStorage();
     renderPlaylist();
   }
 }
@@ -471,6 +565,7 @@ playlist.addEventListener('touchend', (e) => {
   }
   
   items = newItems;
+  saveToStorage();
   renderPlaylist();
   
   touchedElement = null;
@@ -494,6 +589,7 @@ function deleteItem(index) {
   }
   
   items.splice(index, 1);
+  saveToStorage();
   renderPlaylist();
 }
 
@@ -639,6 +735,7 @@ nextBtn.addEventListener('click', () => {
 });
 
 // Initial render
+loadFromStorage();
 renderPlaylist();
 </script>
 
