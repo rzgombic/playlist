@@ -307,7 +307,10 @@ body {
   <button id="next-btn" class="control-btn" title="Next">⏭</button>
   <button id="play-all-btn" title="Play All">Play All</button>
 </div>
-
+<!-- Silent audio for iOS media session -->
+<audio id="silent-audio" loop preload="auto">
+  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=" type="audio/wav">
+</audio>
 <script>
 const textInput = document.getElementById('text-input');
 const addBtn = document.getElementById('add-btn');
@@ -317,6 +320,7 @@ const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const playAllBtn = document.getElementById('play-all-btn');
 const darkModeToggle = document.getElementById('dark-mode-toggle');
+const silentAudio = document.getElementById('silent-audio');
 
 let currentIndex = -1;
 let items = [];
@@ -695,6 +699,7 @@ function setupMediaSession() {
     navigator.mediaSession.setActionHandler('play', () => {
       if (speechSynthesis.paused) {
         speechSynthesis.resume();
+        silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
         startProgressTracking();
         playPauseBtn.textContent = '❚❚';
         isPlaying = true;
@@ -709,6 +714,7 @@ function setupMediaSession() {
     navigator.mediaSession.setActionHandler('pause', () => {
       if (speechSynthesis.speaking && !speechSynthesis.paused) {
         speechSynthesis.pause();
+        silentAudio.pause();
         const currentElapsed = (Date.now() - startTime) / 1000;
         elapsedBeforePause += currentElapsed;
         stopProgressTracking(false);
@@ -752,6 +758,9 @@ function speak(text) {
     playPauseBtn.textContent = '❚❚';
     startProgressTracking();
     updateMediaSession();
+    // Play silent audio to maintain iOS audio session
+    silentAudio.volume = 0.01;
+    silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
   };
   
   utterance.onend = () => {
@@ -769,6 +778,8 @@ function speak(text) {
 
 function stop() {
   speechSynthesis.cancel();
+  silentAudio.pause();
+  silentAudio.currentTime = 0;
   stopProgressTracking();
   isPlaying = false;
   playPauseBtn.textContent = '▶';
@@ -783,6 +794,7 @@ function stop() {
 playPauseBtn.addEventListener('click', () => {
   if (speechSynthesis.speaking && !speechSynthesis.paused) {
     speechSynthesis.pause();
+    silentAudio.pause();
     // Save elapsed time before stopping progress tracking
     const currentElapsed = (Date.now() - startTime) / 1000;
     elapsedBeforePause += currentElapsed;
@@ -792,6 +804,7 @@ playPauseBtn.addEventListener('click', () => {
     updateMediaSession();
   } else if (speechSynthesis.paused) {
     speechSynthesis.resume();
+    silentAudio.play().catch(e => console.log('Silent audio resume failed:', e));
     startProgressTracking();
     playPauseBtn.textContent = '❚❚';
     isPlaying = true;
