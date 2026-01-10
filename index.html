@@ -27,40 +27,87 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 }
 
-/* ---------- TOP BAR ---------- */
-#topbar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding:
-    10px 14px
-    10px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  z-index: 10;
+/* ---------- INPUT AREA ---------- */
+#input-area {
+  padding: 20px;
+  background: white;
+  border-bottom: 2px solid #ddd;
 }
 
-#topbar-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+#text-input {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical;
+  min-height: 120px;
+  font-family: inherit;
 }
 
-#topbar-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+#add-btn {
+  margin-top: 10px;
+  padding: 10px 20px;
+  font-size: 14px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-#counter {
-  flex: 1;
-  font-size: 12px;
-  opacity: 0.8;
+#add-btn:hover {
+  background: #0056b3;
 }
 
-#add {
-  padding: 6px 10px;
+#add-btn:active {
+  transform: scale(0.98);
+}
+
+#add-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+<<<<<<< Updated upstream
+=======
+}
+
+#status-message {
+  min-height: 20px;
+}
+
+#status-message.loading {
+  color: #007bff;
+}
+
+#status-message.error {
+  color: #dc3545;
+}
+
+#status-message.success {
+  color: #28a745;
+}
+
+/* ---------- PLAYLIST AREA ---------- */
+#playlist-area {
+  padding: 20px;
+  padding-bottom: 120px;
+>>>>>>> Stashed changes
+}
+
+#status-message {
+  min-height: 20px;
+}
+
+#status-message.loading {
+  color: #007bff;
+}
+
+#status-message.error {
+  color: #dc3545;
+}
+
+#status-message.success {
+  color: #28a745;
 }
 
 /* ---------- PLAYLIST AREA ---------- */
@@ -154,18 +201,11 @@ textarea {
 
 <body>
 
-<!-- TOP BAR -->
-<div id="topbar">
-  <div id="topbar-inner">
-    <button id="themeToggle">Dark</button>
-
-    <textarea id="t" placeholder="Enter text (2800 characters max)"></textarea>
-
-    <div id="topbar-row">
-      <div id="counter">Chars: 0 / 2800</div>
-      <button id="add">Add</button>
-    </div>
-  </div>
+<!-- INPUT AREA -->
+<div id="input-area">
+  <textarea id="text-input" placeholder="Paste your article text or URL here..."></textarea>
+  <button id="add-btn">Add to Playlist</button>
+  <div id="status-message" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
 </div>
 
 <!-- SCROLLABLE CONTENT -->
@@ -189,95 +229,247 @@ textarea {
 </div>
 
 <script>
-const MAX_CHARS = 2800
+const textInput = document.getElementById('text-input');
+const addBtn = document.getElementById('add-btn');
+const playlist = document.getElementById('playlist');
+const playPauseBtn = document.getElementById('play-pause-btn');
+const prevBtn = document.getElementById('prev-btn');
+const nextBtn = document.getElementById('next-btn');
+const playAllBtn = document.getElementById('play-all-btn');
+const statusMessage = document.getElementById('status-message');
 
-const t = document.getElementById("t")
-const list = document.getElementById("list")
-const counter = document.getElementById("counter")
+let currentIndex = -1;
+let items = [];
+let isPlaying = false;
+let progressInterval = null;
+let startTime = 0;
+let estimatedDuration = 0;
+let pausedAt = 0;
+let elapsedBeforePause = 0;
 
-const playPauseBtn = document.getElementById("playpause")
-const prevBtn = document.getElementById("prev")
-const nextBtn = document.getElementById("next")
-const back10Btn = document.getElementById("back10")
-const fwd10Btn = document.getElementById("fwd10")
-const speedBtn = document.getElementById("speed")
-const themeToggle = document.getElementById("themeToggle")
-
-const progress = document.getElementById("progress")
-const elapsedEl = document.getElementById("elapsed")
-const remainingEl = document.getElementById("remaining")
-
-let speed = +(localStorage.getItem("speed") || 1.5)
-speedBtn.textContent = speed + "×"
-
-const CHARS_PER_SEC = 14
-const SKIP_SECONDS = 10
-
-let currentIndex = -1
-let currentText = ""
-let currentOffset = 0
-let progressTimer = null
-let progressElapsed = 0
-let progressDuration = 0
-
-/* ---------- THEME ---------- */
-const setTheme = dark => {
-  document.body.classList.toggle("dark", dark)
-  themeToggle.textContent = dark ? "Light" : "Dark"
-  localStorage.setItem("dark", dark)
-}
-setTheme(localStorage.getItem("dark") === "true")
-themeToggle.onclick = () =>
-  setTheme(!document.body.classList.contains("dark"))
-
-/* ---------- HELPERS ---------- */
-const fmt = s =>
-  Math.floor(s / 60) + ":" + String(Math.max(0, s % 60 | 0)).padStart(2, "0")
-
-const effectiveSpeed = () =>
-  1 + (speed - 1) * 0.75
-
-const secondsForText = txt =>
-  Math.ceil(txt.length / (CHARS_PER_SEC * effectiveSpeed()))
-
-const highlightCurrent = () => {
-  [...list.children].forEach((li, i) =>
-    li.classList.toggle("playing", i === currentIndex)
-  )
+// ---------- UTILITY FUNCTIONS ----------
+function isURL(str) {
+  try {
+    const url = new URL(str);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
-const savePlaylist = () =>
-  localStorage.setItem(
-    "playlist",
-    JSON.stringify([...list.children].map(li => li.dataset.text))
-  )
+function setStatus(message, type = '') {
+  statusMessage.textContent = message;
+  statusMessage.className = type;
+}
 
-/* ---------- PROGRESS ---------- */
-const startProgress = duration => {
-  clearInterval(progressTimer)
-  progressElapsed = 0
-  progressDuration = duration
-  progress.max = duration
-  progress.value = 0
-  elapsedEl.textContent = "0:00"
-  remainingEl.textContent = "-" + fmt(duration)
+function clearStatus() {
+  setTimeout(() => {
+    statusMessage.textContent = '';
+    statusMessage.className = '';
+  }, 3000);
+}
 
-  progressTimer = setInterval(() => {
-    if (!speechSynthesis.paused) {
-      progressElapsed += 0.1
-      progress.value = progressElapsed
-      elapsedEl.textContent = fmt(progressElapsed)
-      remainingEl.textContent =
-        "-" + fmt(progressDuration - progressElapsed)
+// ---------- URL SCRAPING ----------
+async function scrapeURL(url) {
+  try {
+    // Use Textise.net to convert webpage to plain text
+    const textiseURL = `https://www.textise.net/showText.aspx?strURL=${encodeURIComponent(url)}`;
+    
+    setStatus('Fetching content from URL...', 'loading');
+    addBtn.disabled = true;
+    
+    const response = await fetch(textiseURL, {
+      mode: 'cors'
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch content');
     }
-  }, 100)
+    
+    const html = await response.text();
+    
+    // Parse the Textise response
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Extract the main content from Textise
+    const mainContent = doc.querySelector('#textblock') || doc.querySelector('body');
+    
+    if (!mainContent) {
+      throw new Error('Could not extract content from page');
+    }
+    
+    // Get text content and clean it up
+    let text = mainContent.textContent || mainContent.innerText;
+    text = text.trim();
+    
+    // Remove excessive whitespace and newlines
+    text = text.replace(/\n\s*\n\s*\n/g, '\n\n');
+    text = text.replace(/[ \t]+/g, ' ');
+    
+    if (!text || text.length < 50) {
+      throw new Error('Extracted content is too short or empty');
+    }
+    
+    return text;
+    
+  } catch (error) {
+    console.error('Scraping error:', error);
+    throw error;
+  } finally {
+    addBtn.disabled = false;
+  }
 }
 
-const stopProgress = () => {
-  clearInterval(progressTimer)
-  progress.value = 0
-  elapsedEl.textContent = "0:00"
-  remainingEl.textContent = "-0:00"
+// ---------- ADD ITEM ----------
+addBtn.addEventListener('click', async () => {
+  const input = textInput.value.trim();
+  if (!input) return;
+  
+  try {
+    let textToAdd = input;
+    
+    // Check if input is a URL
+    if (isURL(input)) {
+      try {
+        textToAdd = await scrapeURL(input);
+        setStatus('✓ Content extracted successfully!', 'success');
+        clearStatus();
+      } catch (error) {
+        setStatus('✗ Could not scrape URL. Please copy and paste the article text manually instead.', 'error');
+        alert(
+          'Unable to scrape content from this URL.\n\n' +
+          'This might happen because:\n' +
+          '• The website blocks automated access\n' +
+          '• The page requires login\n' +
+          '• Network connectivity issues\n\n' +
+          'Please try copying the article text directly and pasting it here instead.'
+        );
+        return;
+      }
+    }
+    
+    items.push(textToAdd);
+    renderPlaylist();
+    textInput.value = '';
+    textInput.focus();
+    
+  } catch (error) {
+    console.error('Error adding item:', error);
+    setStatus('✗ An error occurred. Please try again.', 'error');
+    clearStatus();
+  }
+});
+
+// ---------- RENDER PLAYLIST ----------
+function renderPlaylist() {
+  playlist.innerHTML = '';
+  
+  items.forEach((text, index) => {
+    const li = document.createElement('li');
+    li.className = 'playlist-item';
+    li.draggable = true;
+    li.dataset.index = index;
+    
+    if (index === currentIndex) {
+      li.classList.add('playing');
+    }
+    
+    // Drag handle
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '☰';
+    
+    // Item content container
+    const itemContent = document.createElement('div');
+    itemContent.className = 'item-content';
+    
+    // Item text
+    const itemText = document.createElement('div');
+    itemText.className = 'item-text';
+    itemText.textContent = text;
+    
+    // Duration
+    const duration = calculateDuration(text);
+    const durationEl = document.createElement('div');
+    durationEl.className = 'item-duration';
+    durationEl.textContent = formatDuration(duration);
+    
+    // Progress bar
+    const progressContainer = document.createElement('div');
+    progressContainer.className = 'item-progress';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'item-progress-bar';
+    progressContainer.appendChild(progressBar);
+    
+    itemContent.appendChild(itemText);
+    itemContent.appendChild(durationEl);
+    itemContent.appendChild(progressContainer);
+    
+    // Play button
+    const playBtn = document.createElement('button');
+    playBtn.className = 'play-item-btn';
+    playBtn.textContent = '▶ Play';
+    playBtn.addEventListener('click', () => playItem(index));
+    
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-btn';
+    deleteBtn.textContent = '✕';
+    deleteBtn.addEventListener('click', () => deleteItem(index));
+    
+    li.appendChild(handle);
+    li.appendChild(itemContent);
+    li.appendChild(playBtn);
+    li.appendChild(deleteBtn);
+    
+    // Drag events
+    li.addEventListener('dragstart', handleDragStart);
+    li.addEventListener('dragover', handleDragOver);
+    li.addEventListener('drop', handleDrop);
+    li.addEventListener('dragend', handleDragEnd);
+    
+    playlist.appendChild(li);
+  });
+}
+
+// ---------- DRAG AND DROP ----------
+let draggedIndex = null;
+
+function handleDragStart(e) {
+  draggedIndex = parseInt(e.target.dataset.index);
+  e.target.classList.add('dragging');
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const dropIndex = parseInt(e.currentTarget.dataset.index);
+  
+  if (draggedIndex !== null && draggedIndex !== dropIndex) {
+    // Reorder array
+    const [draggedItem] = items.splice(draggedIndex, 1);
+    items.splice(dropIndex, 0, draggedItem);
+    
+    // Update current index
+    if (currentIndex === draggedIndex) {
+      currentIndex = dropIndex;
+    } else if (draggedIndex < currentIndex && dropIndex >= currentIndex) {
+      currentIndex--;
+    } else if (draggedIndex > currentIndex && dropIndex <= currentIndex) {
+      currentIndex++;
+    }
+    
+    renderPlaylist();
+  }
+}
+
+function handleDragEnd(e) {
+  e.target.classList.remove('dragging');
+  draggedIndex = null;
 }
 
 /* ---------- SPEAK ---------- */
