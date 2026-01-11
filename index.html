@@ -290,7 +290,7 @@ body {
 
 <!-- INPUT AREA -->
 <div id="input-area">
-  <textarea id="text-input" placeholder="Paste your article text here..."></textarea>
+  <textarea id="text-input" placeholder="Paste article text or URL here..."></textarea>
   <button id="add-btn">Add to Playlist</button>
 </div>
 
@@ -301,16 +301,13 @@ body {
 
 <!-- BOTTOM CONTROLS -->
 <div id="controls">
-  <button id="dark-mode-toggle" title="Toggle Dark Mode">🌆</button>
+  <button id="dark-mode-toggle" title="Toggle Dark Mode">🌃</button>
   <button id="prev-btn" class="control-btn" title="Previous">⏮</button>
   <button id="play-pause-btn" title="Play/Pause">▶</button>
   <button id="next-btn" class="control-btn" title="Next">⏭</button>
   <button id="play-all-btn" title="Play All">Play All</button>
 </div>
-<!-- Silent audio for iOS media session -->
-<audio id="silent-audio" loop preload="auto">
-  <source src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=" type="audio/wav">
-</audio>
+
 <script>
 const textInput = document.getElementById('text-input');
 const addBtn = document.getElementById('add-btn');
@@ -320,7 +317,6 @@ const prevBtn = document.getElementById('prev-btn');
 const nextBtn = document.getElementById('next-btn');
 const playAllBtn = document.getElementById('play-all-btn');
 const darkModeToggle = document.getElementById('dark-mode-toggle');
-const silentAudio = document.getElementById('silent-audio');
 
 let currentIndex = -1;
 let items = [];
@@ -360,7 +356,7 @@ function loadDarkMode() {
 function toggleDarkMode() {
   document.body.classList.toggle('dark-mode');
   const isDark = document.body.classList.contains('dark-mode');
-  darkModeToggle.textContent = isDark ? '🌇' : '🌆';
+  darkModeToggle.textContent = isDark ? '🌇' : '🌃';
   saveDarkMode(isDark);
 }
 
@@ -373,9 +369,97 @@ if (loadDarkMode()) {
 }
 
 // ---------- ADD ITEM ----------
-addBtn.addEventListener('click', () => {
-  const text = textInput.value.trim();
-  if (!text) return;
+function isValidUrl(string) {
+  try {
+    const url = new URL(string);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
+
+function extractTextFromHTML(html) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  
+  // Remove script, style, and other non-content elements
+  const elementsToRemove = doc.querySelectorAll('script, style, nav, header, footer, iframe, noscript');
+  elementsToRemove.forEach(el => el.remove());
+  
+  // Try to find main content areas first
+  const contentSelectors = [
+    'article',
+    '[role="main"]',
+    'main',
+    '.article-content',
+    '.post-content',
+    '.entry-content',
+    '#content',
+    '.content'
+  ];
+  
+  let textContent = '';
+  for (const selector of contentSelectors) {
+    const element = doc.querySelector(selector);
+    if (element) {
+      textContent = element.innerText || element.textContent;
+      break;
+    }
+  }
+  
+  // Fallback to body if no main content found
+  if (!textContent) {
+    textContent = doc.body.innerText || doc.body.textContent;
+  }
+  
+  // Clean up the text
+  return textContent
+    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+    .replace(/\n\s*\n/g, '\n') // Remove multiple line breaks
+    .trim();
+}
+
+async function fetchUrlContent(url) {
+  try {
+    addBtn.disabled = true;
+    addBtn.textContent = 'Fetching...';
+    
+    // Use AllOrigins CORS proxy (free service)
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch URL');
+    }
+    
+    const data = await response.json();
+    const text = extractTextFromHTML(data.contents);
+    
+    if (text.length < 50) {
+      throw new Error('Not enough text content found on page');
+    }
+    
+    return text;
+  } catch (error) {
+    alert('Error fetching URL: ' + error.message + '\n\nTry copying the text directly instead.');
+    return null;
+  } finally {
+    addBtn.disabled = false;
+    addBtn.textContent = 'Add to Playlist';
+  }
+}
+
+addBtn.addEventListener('click', async () => {
+  const input = textInput.value.trim();
+  if (!input) return;
+  
+  let text = input;
+  
+  // Check if input is a URL
+  if (isValidUrl(input)) {
+    text = await fetchUrlContent(input);
+    if (!text) return; // Fetch failed
+  }
   
   items.push(text);
   saveToStorage();
@@ -699,7 +783,6 @@ function setupMediaSession() {
     navigator.mediaSession.setActionHandler('play', () => {
       if (speechSynthesis.paused) {
         speechSynthesis.resume();
-        silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
         startProgressTracking();
         playPauseBtn.textContent = '❚❚';
         isPlaying = true;
@@ -714,7 +797,6 @@ function setupMediaSession() {
     navigator.mediaSession.setActionHandler('pause', () => {
       if (speechSynthesis.speaking && !speechSynthesis.paused) {
         speechSynthesis.pause();
-        silentAudio.pause();
         const currentElapsed = (Date.now() - startTime) / 1000;
         elapsedBeforePause += currentElapsed;
         stopProgressTracking(false);
@@ -758,9 +840,6 @@ function speak(text) {
     playPauseBtn.textContent = '❚❚';
     startProgressTracking();
     updateMediaSession();
-    // Play silent audio to maintain iOS audio session
-    silentAudio.volume = 0.01;
-    silentAudio.play().catch(e => console.log('Silent audio play failed:', e));
   };
   
   utterance.onend = () => {
@@ -778,8 +857,6 @@ function speak(text) {
 
 function stop() {
   speechSynthesis.cancel();
-  silentAudio.pause();
-  silentAudio.currentTime = 0;
   stopProgressTracking();
   isPlaying = false;
   playPauseBtn.textContent = '▶';
@@ -794,7 +871,6 @@ function stop() {
 playPauseBtn.addEventListener('click', () => {
   if (speechSynthesis.speaking && !speechSynthesis.paused) {
     speechSynthesis.pause();
-    silentAudio.pause();
     // Save elapsed time before stopping progress tracking
     const currentElapsed = (Date.now() - startTime) / 1000;
     elapsedBeforePause += currentElapsed;
@@ -804,7 +880,6 @@ playPauseBtn.addEventListener('click', () => {
     updateMediaSession();
   } else if (speechSynthesis.paused) {
     speechSynthesis.resume();
-    silentAudio.play().catch(e => console.log('Silent audio resume failed:', e));
     startProgressTracking();
     playPauseBtn.textContent = '❚❚';
     isPlaying = true;
